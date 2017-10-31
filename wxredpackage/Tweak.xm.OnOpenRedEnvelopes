@@ -1,0 +1,18 @@
+@interface WCRedEnvelopesReceiveHomeView{
+    NSDictionary *m_dicBaseInfo;
+    id  m_delegate;
+}
+@end
+
+%hook WCRedEnvelopesReceiveHomeView
+- (void)OnOpenRedEnvelopes {
+    NSDictionary *dic = MSHookIvar<NSDictionary *>(self , "m_dicBaseInfo");
+    NSArray *keys = [dic allKeys];
+    for (NSInteger index = 0 ; index < keys.count ; index++){
+    NSLog(@"%@:%@",keys[index], [dic objectForKey:keys[index]]);
+    }
+    id dele = MSHookIvar<id>(self , "m_delegate");
+    NSLog(@"m_delegate class:%@",dele);
+    //%orig;
+}
+%end

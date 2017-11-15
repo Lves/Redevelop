@@ -1,3 +1,5 @@
+#import "LLRedEnvelopesQueue.h"
+
 @interface WCBizUtil
 + (id)dictionaryWithDecodedComponets:(id)arg1 separator:(id)arg2;
 @end
@@ -94,20 +96,17 @@
 %hook WCRedEnvelopesReceiveControlLogic
 - (void)WCRedEnvelopesReceiveHomeViewOpenRedEnvelopes {
     id data = MSHookIvar<WCRedEnvelopesControlData *>(self, "m_data");
-    NSLog(@"data class: %@", [data class]);
+
     CMessageWrap *msgWrap = [data  m_oSelectedMessageWrap];
     WCPayInfoItem *payInfoItem = [msgWrap m_oWCPayInfoItem];
     NSString *m_c2cNativeUrl = [payInfoItem m_c2cNativeUrl];
-    NSLog(@"m_c2cNativeUrl: %@", m_c2cNativeUrl);
+    //NSLog(@"m_c2cNativeUrl: %@", m_c2cNativeUrl);
 
 
     NSInteger length = [@"wxpay://c2cbizmessagehandler/hongbao/receivehongbao?" length];
     NSString *subStr  = [m_c2cNativeUrl substringFromIndex: length];
     NSDictionary *dic =  [%c(WCBizUtil) dictionaryWithDecodedComponets:subStr separator:@"&"];
-    NSArray *keys = [dic allKeys];
-    for (NSInteger index = 0 ; index < keys.count ; index++){
-        NSLog(@"%@:%@",keys[index], [dic objectForKey:keys[index]]);
-    }
+
     NSMutableDictionary *myDictionary = [NSMutableDictionary dictionary] ;
     [myDictionary setObject:@"1" forKey:@"msgType"];
     NSString *sendId = [dic objectForKey:@"sendid"];
@@ -139,7 +138,11 @@
     if (0 != [timingIdentifier length]){
         [myDictionary setObject:timingIdentifier forKey:@"timingIdentifier"];
     }
-    NSLog(@"抢红包时的 timingIdentifier： %@", timingIdentifier);
+    NSLog(@"真正抢红包时的参数:");
+    NSArray *keys = [myDictionary allKeys];
+    for (NSInteger index = 0 ; index < keys.count ; index++){
+        NSLog(@"%@:%@",keys[index], [myDictionary objectForKey:keys[index]]);
+    }
     //WCPayLogicMgr *payLogicMgrce = [[MMServiceCenter defaultCenter] getService: [%c(WCPayLogicMgr) class]];
     //[payLogicMgrce setRealnameReportScene:([%c(WCPayLogicMgr) class] + 0x3EB)];
     //[baseInfo objectForKeyedSubscript:@"agree_duty"];
@@ -153,56 +156,60 @@
 */
 
 //获得红包
-/*
 %hook CMessageMgr
 - (void)AsyncOnAddMsg:(NSString *)wxid MsgWrap:(CMessageWrap *)wrap {
+    %orig;
+
     NSInteger uiMessageType = [wrap m_uiMessageType];
-   // NSString *nsContent = [wrap m_nsContent];
-    NSString *nsFromUsr = [wrap m_nsFromUsr];
-
-
-    NSLog(@"m_uiMessageType=%zd m_nsFromUsr=%@",
-    uiMessageType,
-    nsFromUsr);
-
      if ( 49 == uiMessageType ){ //红包消息
+        NSString *nsFromUsr = [wrap m_nsFromUsr];
         //抢红包
         NSLog(@"收到红包消息");
         WCPayInfoItem *payInfoItem = [wrap m_oWCPayInfoItem];
         if (payInfoItem == nil) {
             NSLog(@"payInfoItem is nil");
+            return;
         }
         NSString *m_c2cNativeUrl = [payInfoItem m_c2cNativeUrl];
         if (m_c2cNativeUrl == nil) {
             NSLog(@"m_c2cNativeUrl is nil");
+            return;
         }
         NSInteger length = [@"wxpay://c2cbizmessagehandler/hongbao/receivehongbao?" length];
         NSString *subStr  = [m_c2cNativeUrl substringFromIndex: length];
         NSDictionary *dic =  [%c(WCBizUtil) dictionaryWithDecodedComponets:subStr separator:@"&"];
-        NSMutableDictionary *myDictionary = [NSMutableDictionary dictionary] ;
-        [myDictionary setObject:@"1" forKey:@"msgType"];
+
+        LLRedEnvelopParam *redEnvelopParam = [[LLRedEnvelopParam alloc] init];
+        redEnvelopParam.msgType = @"1";
         NSString *sendId = [dic objectForKey:@"sendid"];
-        [myDictionary setObject:sendId forKey:@"sendId"];
+        redEnvelopParam.sendId = sendId;
         NSString *channelId = [dic objectForKey:@"channelid"];
-        [myDictionary setObject:channelId forKey:@"channelId"];
+        redEnvelopParam.channelId = channelId;
         CContactMgr *service =  [[%c(MMServiceCenter) defaultCenter] getService:[%c(CContactMgr) class]];
         if (service == nil) {
             NSLog(@"service is nil");
+            return;
         }
         CContact *contact =  [service getSelfContact];
         NSString *displayName = [contact getContactDisplayName];
-        [myDictionary setObject:displayName forKey:@"nickName"];
+        redEnvelopParam.nickName = displayName;
         NSString *headerUrl =  [contact m_nsHeadImgUrl];
-        [myDictionary setObject:headerUrl forKey:@"headImg"];
+        redEnvelopParam.headImg = headerUrl;
         if (nil != wrap) {
-            [myDictionary setObject:m_c2cNativeUrl forKey:@"nativeUrl"];
+            redEnvelopParam.nativeUrl = m_c2cNativeUrl;
         }
-        [myDictionary setObject:[wrap m_nsFromUsr] forKey:@"sessionUserName"];
-
-
+        redEnvelopParam.sessionUserName = nsFromUsr;
+        //存储抢红包时需要的参数
+        if (sendId.length > 0)   {
+            [[LLRedEnvelopesQueue sharedInstance] addParams:redEnvelopParam];
+        }
         //收到红包就拆红包
         NSMutableDictionary *params = [NSMutableDictionary dictionary] ;
-        [params setObject:@"1" forKey:@"inWay"]; //0:群聊，1：单聊
+        if ([nsFromUsr hasSuffix:@"@chatroom"]){ //群红包
+            [params setObject:@"0" forKey:@"inWay"]; //0:群聊，1：单聊
+        }else {     //个人红包
+            [params setObject:@"1" forKey:@"inWay"]; //0:群聊，1：单聊
+        }
         [params setObject:sendId forKey:@"sendId"];
         [params setObject:m_c2cNativeUrl forKey:@"nativeUrl"];
         [params setObject:@"1" forKey:@"msgType"];
@@ -211,50 +218,41 @@
         WCRedEnvelopesLogicMgr *redEnvelopesLogicMgr = [[%c(MMServiceCenter) defaultCenter] getService:[%c(WCRedEnvelopesLogicMgr) class]];
         [redEnvelopesLogicMgr ReceiverQueryRedEnvelopesRequest:params];
     }
-    NSLog(@"获得红包-----end\n");
-    //%orig;
+
 }
 %end
-*/
+
 
 %hook WCRedEnvelopesLogicMgr
-/*
-- (void)ReceiverQueryRedEnvelopesRequest:(NSDictionary *)dic {
-    NSLog(@"ReceiverQueryRedEnvelopesRequest");
-    NSArray *keys = [dic allKeys];
-    for (NSInteger index = 0 ; index < keys.count ; index++){
-        NSLog(@"%@:%@",keys[index], [dic objectForKey:keys[index]]);
-    }
-    NSLog(@"拆红包-----end\n");
-    %orig;
-}
-- (void)GetHongbaoBusinessRequest:(NSDictionary *)dic CMDID:(unsigned int)arg2 OutputType:(unsigned int)arg3 {
-    NSLog(@"GetHongbaoBusinessRequest-arg2:%d, arg3:%d",arg2,arg3);
-    NSArray *keys = [dic allKeys];
-    for (NSInteger index = 0 ; index < keys.count ; index++){
-        NSLog(@"%@:%@",keys[index], [dic objectForKey:keys[index]]);
-    }
-    NSLog(@"请求数据-----end\n");
-    %orig;
-}
-*/
 - (void)OnWCToHongbaoCommonResponse:(HongBaoRes *)hongBaoRes Request:(HongBaoReq *)hongBaoReq {
-    NSLog(@"OnWCToHongbaoCommonResponse: ");
-
-    NSLog(@"cgiCmdid: %d", hongBaoRes.cgiCmdid);
-    //NSString *resResult =[[NSString alloc] initWithData:hongBaoRes.retText.buffer encoding:NSUTF8StringEncoding];
-    //NSLog(@"retText.buffer: %@ \n", resResult);
-
-
+    %orig;
+    NSLog(@"微信服务器返回数据: ");
     NSError *err;
     NSDictionary *bufferDic = [NSJSONSerialization JSONObjectWithData:hongBaoRes.retText.buffer options:NSJSONReadingMutableContainers error:&err];
-
-    NSArray *keys = [bufferDic allKeys];
-    for (NSInteger index = 0 ; index < keys.count ; index++){
-        NSLog(@"%@:%@",keys[index], [bufferDic objectForKey:keys[index]]);
+    if (hongBaoRes == nil || bufferDic == nil){
+        return;
     }
-
-    %orig;
+    if (hongBaoRes.cgiCmdid == 3) {
+        int receiveStatus = [bufferDic[@"receiveStatus"] intValue];
+        int hbStatus = [bufferDic[@"hbStatus"] intValue];
+        if (receiveStatus == 0 && hbStatus == 2){
+            NSString *timingIdentifier = bufferDic[@"timingIdentifier"];
+            NSString *sendId = bufferDic[@"sendId"];
+            if (sendId.length > 0 && timingIdentifier.length > 0){
+                LLRedEnvelopParam *redEnvelopParam = [[LLRedEnvelopesQueue sharedInstance] getParams:sendId];
+                if (nil != redEnvelopParam ){
+                    redEnvelopParam.timingIdentifier = timingIdentifier;
+                    NSDictionary *paramDic = [redEnvelopParam toParams];
+                    sleep(1);
+                    //抢红包
+                    WCRedEnvelopesLogicMgr *redEnvelopesLogicMgr = [[%c(MMServiceCenter) defaultCenter] getService:[%c(WCRedEnvelopesLogicMgr) class]];
+                    if (nil != redEnvelopesLogicMgr){
+                        [redEnvelopesLogicMgr OpenRedEnvelopesRequest:paramDic];
+                    }
+                }
+            }
+        }
+    }
 }
 %end
 

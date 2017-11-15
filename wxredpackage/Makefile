@@ -4,7 +4,7 @@ THEOS_DEVICE_IP = 192.168.212.221
 include $(THEOS)/makefiles/common.mk
 
 TWEAK_NAME = WXRedPackage
-WXRedPackage_FILES = Tweak.xm
+WXRedPackage_FILES = Tweak.xm LLRedEnvelopesQueue.m
 WXRedPackage_FRAMEWORKS = UIKit 
 
 include $(THEOS_MAKE_PATH)/tweak.mk
